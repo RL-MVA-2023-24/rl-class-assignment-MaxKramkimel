@@ -91,7 +91,7 @@ class ProjectAgent:
 
 
 
-	def __init__(self, config, value_network, policy_network):
+	def __init__(self ):
 		# networks
 		device = "cuda" if next(value_network.parameters()).is_cuda else "cpu"
 		self.scalar_dtype = next(value_network.parameters()).dtype
@@ -214,9 +214,9 @@ config = {'gamma': .99,
 		  'tqdm_disable': False
 		 }
 #max_episode_steps = 10000
-#device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-#Qfunction = QNetwork(env).to(device)
-#policy = policyNetwork(env).to(device)
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+Qfunction = QNetwork(env).to(device)
+policy = policyNetwork(env).to(device)
 
 #agent = ProjectAgent(config, Qfunction, policy)
 #episode_returns = agent.train(env, max_episode_steps)
