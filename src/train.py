@@ -213,7 +213,7 @@ config = {'gamma': .99,
 		  'exploration_noise': .1,
 		  'tqdm_disable': False
 		 }
-max_episode_steps = 200
+max_episode_steps = 20000
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 Qfunction = QNetwork(env).to(device)
 policy = policyNetwork(env).to(device)
