@@ -183,7 +183,7 @@ class ProjectAgent:
 
 
 	def act(self, observation, use_random=False):
-
+		scalar_dtype = next(policy.parameters()).dtype
 
 		if(use_random):
 			return env.action_space.sample()
