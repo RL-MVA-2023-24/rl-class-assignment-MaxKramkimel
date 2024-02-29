@@ -93,9 +93,9 @@ class ProjectAgent:
 
 	def __init__(self ):
 		# networks
-		device = "cuda" if next(value_network.parameters()).is_cuda else "cpu"
-		self.scalar_dtype = next(value_network.parameters()).dtype
-		self.Qfunction = value_network
+		device = "cuda" if next(Qfunction.parameters()).is_cuda else "cpu"
+		self.scalar_dtype = next(Qfunction.parameters()).dtype
+		self.Qfunction = Qfunction
 		self.Q_target = deepcopy(self.Qfunction).to(device)
 		self.pi = policy_network
 		self.pi_target = deepcopy(self.pi).to(device)
