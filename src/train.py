@@ -97,7 +97,7 @@ class ProjectAgent:
 		self.scalar_dtype = next(Qfunction.parameters()).dtype
 		self.Qfunction = Qfunction
 		self.Q_target = deepcopy(self.Qfunction).to(device)
-		self.pi = policy_network
+		self.pi = policy
 		self.pi_target = deepcopy(self.pi).to(device)
 		# parameters
 		self.gamma = config['gamma'] if 'gamma' in config.keys() else 0.95
