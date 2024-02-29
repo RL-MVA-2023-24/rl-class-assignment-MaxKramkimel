@@ -71,6 +71,9 @@ class policyNetwork(nn.Module):
 		self.fc1 = nn.Linear(state_dim, 256)
 		self.fc2 = nn.Linear(256, 256)
 		self.fc_mu = nn.Linear(256, action_dim)
+		self.register_buffer("action_scale", torch.tensor(1.0, dtype=torch.float32))
+		self.register_buffer("action_bias", torch.tensor(0.0, dtype=torch.float32))
+
 		# action rescaling
 	#	self.register_buffer(
 	#		"action_scale", torch.tensor((env.action_space.high - env.action_space.low) / 2.0, dtype=torch.float32)
