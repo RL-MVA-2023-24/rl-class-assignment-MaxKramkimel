@@ -6,7 +6,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from copy import deepcopy
 import random
-from tqdm import trange
+#from tqdm import trange
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -119,7 +119,7 @@ class ProjectAgent:
 		episode_cum_reward = 0
 		episode_return = []
 
-		for time_step in trange(int(max_steps), disable=self.tqdm_disable):
+		for time_step in range(int(max_steps)):
 			# step (policy + noise), add to rb
 			if time_step > self.delay_learning:
 				with torch.no_grad():
@@ -195,12 +195,12 @@ class ProjectAgent:
 	def save(self, path):
 		torch.save(self.Qfunction.state_dict(),path + "Qfunction.pth") 
 		torch.save(self.pi.state_dict(),path + "pi.pth") 
-		pass
+
 
 	def load(self):
 		self.Qfunction.load_state_dict(torch.load("save_Qfunction.pth"))
 		self.pi.load_state_dict(torch.load("save_pi.pth"))
-		pass
+
 
 
 
@@ -213,7 +213,7 @@ config = {'gamma': .99,
 		  'exploration_noise': .1,
 		  'tqdm_disable': False
 		 }
-max_episode_steps = 20000
+max_episode_steps = 10000
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 Qfunction = QNetwork(env).to(device)
 policy = policyNetwork(env).to(device)
