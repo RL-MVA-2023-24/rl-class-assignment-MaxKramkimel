@@ -213,13 +213,13 @@ config = {'gamma': .99,
 		  'exploration_noise': .1,
 		  'tqdm_disable': False
 		 }
-max_episode_steps = 10000
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-Qfunction = QNetwork(env).to(device)
-policy = policyNetwork(env).to(device)
+#max_episode_steps = 10000
+#device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+#Qfunction = QNetwork(env).to(device)
+#policy = policyNetwork(env).to(device)
 
-agent = ProjectAgent(config, Qfunction, policy)
-episode_returns = agent.train(env, max_episode_steps)
+#agent = ProjectAgent(config, Qfunction, policy)
+#episode_returns = agent.train(env, max_episode_steps)
 
-agent.save("save_")
+"agent.save("save_")
 
