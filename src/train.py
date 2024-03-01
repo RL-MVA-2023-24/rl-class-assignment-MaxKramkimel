@@ -57,6 +57,7 @@ def greedy_action(network, state):
 class ProjectAgent:
 
 	def __init__(self):
+	
 		model = DQN
 		self.model = DQN
 		device = "cuda" if next(model.parameters()).is_cuda else "cpu"
@@ -133,6 +134,7 @@ class ProjectAgent:
 		state, _ = env.reset()
 		epsilon = self.epsilon_max
 		step = 0
+		best_attained = 0
 		while episode < max_episode:
 			# update epsilon
 			if step > self.epsilon_delay:
@@ -187,7 +189,11 @@ class ProjectAgent:
 						  ", batch size ", '{:4d}'.format(len(self.memory)), 
 						  ", ep return ", '{:4.1f}'.format(episode_cum_reward), 
 						  sep='')
-					print(evaluate_HIV(agent=agent, nb_episode=1))
+					res_eval = evaluate_HIV(agent=self, nb_episode=1)
+					print(best_attained)
+					if(res_eval> best_attained):
+						best_attained = res_eval
+						self.save("save_")
 
 				
 				state, _ = env.reset()
@@ -233,28 +239,30 @@ DQN = torch.nn.Sequential(nn.Linear(state_dim, nb_neurons),
 						  nn.ReLU(), 
 						  nn.Linear(nb_neurons, nb_neurons),
 						  nn.ReLU(), 
+						  nn.Linear(nb_neurons, nb_neurons),
+						  nn.ReLU(), 
 						  nn.Linear(nb_neurons, n_action)).to(device)
 
 # DQN config
 config = {'nb_actions': env.action_space.n,
-		  'learning_rate': 0.01,
-		  'gamma': 0.95,
+		  'learning_rate': 0.005,
+		  'gamma': 0.99,
 		  'buffer_size': 1000000,
 		  'epsilon_min': 0.01,
 		  'epsilon_max': 1.,
-		  'epsilon_decay_period': 1000,
-		  'epsilon_delay_decay': 20,
-		  'batch_size': 200,
-		  'gradient_steps': 1,
+		  'epsilon_decay_period': 10000,
+		  'epsilon_delay_decay': 200,
+		  'batch_size': 400,
+		  'gradient_steps': 2,
 		  'update_target_strategy': 'replace', # or 'ema'
-		  'update_target_freq': 50,
+		  'update_target_freq': 500,
 		  'update_target_tau': 0.005,
 		  'criterion': torch.nn.SmoothL1Loss()}
 
 # Train agent
 
-#agent = ProjectAgent()
-#ep_length, disc_rewards, tot_rewards, V0 = agent.train(env, 200)
+agent = ProjectAgent()
+ep_length, disc_rewards, tot_rewards, V0 = agent.train(env, 100)
 
 #agent.save("save_")
 
