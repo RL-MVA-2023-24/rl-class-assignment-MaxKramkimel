@@ -10,6 +10,7 @@ import random
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from evaluate import evaluate_HIV
 
 print("début import")
 env = TimeLimit(
@@ -42,143 +43,158 @@ class ReplayBuffer:
 	def __len__(self):
 		return len(self.data)
 
-class QNetwork(nn.Module):
-	def __init__(self, env):
-		super().__init__()
-		print(env.observation_space.shape)
-		print(env.action_space.shape)
-		state_dim = env.observation_space.shape[0]
-		print(env.action_space)
-		action_dim = env.action_space.n
-		self.fc1 = nn.Linear(state_dim + action_dim, 256)
-		self.fc2 = nn.Linear(256, 256)
-		self.fc3 = nn.Linear(256, 1)
-	def forward(self, x, a):
-		x = torch.cat([x, a], 1)
-		x = F.relu(self.fc1(x))
-		x = F.relu(self.fc2(x))
-		x = self.fc3(x)
-		return x
 
 
+def greedy_action(network, state):
+	device = "cuda" if next(network.parameters()).is_cuda else "cpu"
+	with torch.no_grad():
+		Q = network(torch.Tensor(state).unsqueeze(0).to(device))
+		return torch.argmax(Q).item()
 
-
-class policyNetwork(nn.Module):
-	def __init__(self, env):
-		super().__init__()
-		state_dim = env.observation_space.shape[0]
-		action_dim = env.action_space.n
-		self.fc1 = nn.Linear(state_dim, 256)
-		self.fc2 = nn.Linear(256, 256)
-		self.fc_mu = nn.Linear(256, action_dim)
-		self.register_buffer("action_scale", torch.tensor(1.0, dtype=torch.float32))
-		self.register_buffer("action_bias", torch.tensor(0.0, dtype=torch.float32))
-
-		# action rescaling
-	#	self.register_buffer(
-	#		"action_scale", torch.tensor((env.action_space.high - env.action_space.low) / 2.0, dtype=torch.float32)
-	#	)
-	#	self.register_buffer(
-	#		"action_bias", torch.tensor((env.action_space.high + env.action_space.low) / 2.0, dtype=torch.float32)
-	#	)
-
-	def forward(self, x):
-		x = F.relu(self.fc1(x))
-		x = F.relu(self.fc2(x))
-		x = torch.tanh(self.fc_mu(x))
-		return x * self.action_scale + self.action_bias
 
 
 # ENJOY!
 class ProjectAgent:
 
+	def __init__(self):
+		model = DQN
+		self.model = DQN
+		device = "cuda" if next(model.parameters()).is_cuda else "cpu"
+		self.device = device
 
-
-	def __init__(self ):
-		# networks
-		device = "cuda" if next(Qfunction.parameters()).is_cuda else "cpu"
-		self.scalar_dtype = next(Qfunction.parameters()).dtype
-		self.Qfunction = Qfunction
-		self.Q_target = deepcopy(self.Qfunction).to(device)
-		self.pi = policy
-		self.pi_target = deepcopy(self.pi).to(device)
-		# parameters
+		self.nb_actions = config['nb_actions']
 		self.gamma = config['gamma'] if 'gamma' in config.keys() else 0.95
-		buffer_size = config['buffer_size'] if 'buffer_size' in config.keys() else int(1e5)
-		self.memory = ReplayBuffer(buffer_size, device)
 		self.batch_size = config['batch_size'] if 'batch_size' in config.keys() else 100
+		buffer_size = config['buffer_size'] if 'buffer_size' in config.keys() else int(1e5)
+		self.memory = ReplayBuffer(buffer_size,device)
+		self.epsilon_max = config['epsilon_max'] if 'epsilon_max' in config.keys() else 1.
+		self.epsilon_min = config['epsilon_min'] if 'epsilon_min' in config.keys() else 0.01
+		self.epsilon_stop = config['epsilon_decay_period'] if 'epsilon_decay_period' in config.keys() else 1000
+		self.epsilon_delay = config['epsilon_delay_decay'] if 'epsilon_delay_decay' in config.keys() else 20
+		self.epsilon_step = (self.epsilon_max-self.epsilon_min)/self.epsilon_stop
+		self.model = model 
+		self.target_model = deepcopy(self.model).to(device)
+		self.criterion = config['criterion'] if 'criterion' in config.keys() else torch.nn.MSELoss()
 		lr = config['learning_rate'] if 'learning_rate' in config.keys() else 0.001
-		self.Q_optimizer = torch.optim.Adam(list(self.Qfunction.parameters()), lr=lr)
-		self.pi_optimizer = torch.optim.Adam(list(self.pi.parameters()), lr=lr)
-		self.tau = config['tau'] if 'tau' in config.keys() else 0.005
-		self.exploration_noise = config['exploration_noise'] if 'exploration_noise' in config.keys() else 0.005
-		self.delay_learning = config['delay_learning'] if 'delay_learning' in config.keys() else 1e4
-		self.tqdm_disable = config['tqdm_disable'] if 'tqdm_disable' in config.keys() else True
-		self.disable_episode_report = config['disable_episode_report'] if 'disable_episode_report' in config.keys() else True
+		self.optimizer = config['optimizer'] if 'optimizer' in config.keys() else torch.optim.Adam(self.model.parameters(), lr=lr)
+		self.nb_gradient_steps = config['gradient_steps'] if 'gradient_steps' in config.keys() else 1
+		self.update_target_strategy = config['update_target_strategy'] if 'update_target_strategy' in config.keys() else 'replace'
+		self.update_target_freq = config['update_target_freq'] if 'update_target_freq' in config.keys() else 20
+		self.update_target_tau = config['update_target_tau'] if 'update_target_tau' in config.keys() else 0.005
+		self.monitoring_nb_trials = config['monitoring_nb_trials'] if 'monitoring_nb_trials' in config.keys() else 0
 
-	def train(self, env, max_steps):
-		x,_ = env.reset()
+	def MC_eval(self, env, nb_trials):   # NEW NEW NEW
+		MC_total_reward = []
+		MC_discounted_reward = []
+		for _ in range(nb_trials):
+			x,_ = env.reset()
+			done = False
+			trunc = False
+			total_reward = 0
+			discounted_reward = 0
+			step = 0
+			while not (done or trunc):
+				a = greedy_action(self.model, x)
+				y,r,done,trunc,_ = env.step(a)
+				x = y
+				total_reward += r
+				discounted_reward += self.gamma**step * r
+				step += 1
+			MC_total_reward.append(total_reward)
+			MC_discounted_reward.append(discounted_reward)
+		return np.mean(MC_discounted_reward), np.mean(MC_total_reward)
+	
+	def V_initial_state(self, env, nb_trials):   # NEW NEW NEW
+		with torch.no_grad():
+			for _ in range(nb_trials):
+				val = []
+				x,_ = env.reset()
+				val.append(self.model(torch.Tensor(x).unsqueeze(0).to(device)).max().item())
+		return np.mean(val)
+	
+	def gradient_step(self):
+		if len(self.memory) > self.batch_size:
+			X, A, R, Y, D = self.memory.sample(self.batch_size)
+			QYmax = self.target_model(Y).max(1)[0].detach()
+			update = torch.addcmul(R, 1-D, QYmax, value=self.gamma)
+			QXA = self.model(X).gather(1, A.to(torch.long).unsqueeze(1))
+			loss = self.criterion(QXA, update.unsqueeze(1))
+			self.optimizer.zero_grad()
+			loss.backward()
+			self.optimizer.step() 
+	
+	def train(self, env, max_episode):
+		episode_return = []
+		MC_avg_total_reward = []   # NEW NEW NEW
+		MC_avg_discounted_reward = []   # NEW NEW NEW
+		V_init_state = []   # NEW NEW NEW
 		episode = 0
 		episode_cum_reward = 0
-		episode_return = []
-
-		for time_step in range(int(max_steps)):
-			# step (policy + noise), add to rb
-			if time_step > self.delay_learning:
-				with torch.no_grad():
-					a = self.pi(torch.tensor(x,dtype=self.scalar_dtype))
-					a += torch.normal(0, self.pi.action_scale * self.exploration_noise)
-					a = a.cpu().numpy().clip(env.action_space.low, env.action_space.high)
+		state, _ = env.reset()
+		epsilon = self.epsilon_max
+		step = 0
+		while episode < max_episode:
+			# update epsilon
+			if step > self.epsilon_delay:
+				epsilon = max(self.epsilon_min, epsilon-self.epsilon_step)
+			# select epsilon-greedy action
+			if np.random.rand() < epsilon:
+				action = env.action_space.sample()
 			else:
-				a = env.action_space.sample()
-			y, r, done, trunc, _ = env.step(a)
-			self.memory.append(x,a,r,y,done)
-			episode_cum_reward += r
-			
-			# gradient step
-			if time_step > self.delay_learning:
-				X, A, R, Y, D = self.memory.sample(self.batch_size)
-				## Qfunction update
-				with torch.no_grad():
-					next_actions = self.pi_target(Y)
-					QYA = self.Q_target(Y, next_actions)
-					#target = torch.addcmul(R, 1-D, QY, value=self.gamma)
-					target = R + self.gamma * (1-D) * QYA.view(-1)
-				QXA = self.Qfunction(X, A).view(-1)
-				Qloss = F.mse_loss(QXA,target)
-				self.Q_optimizer.zero_grad()
-				Qloss.backward()
-				self.Q_optimizer.step()
-				## policy update
-				pi_loss = -self.Qfunction(X, self.pi(X)).mean()
-				self.pi_optimizer.zero_grad()
-				pi_loss.backward()
-				self.pi_optimizer.step()
-				
-				# target networks update
-				for param, target_param in zip(self.pi.parameters(), self.pi_target.parameters()):
-					target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
-				for param, target_param in zip(self.Qfunction.parameters(), self.Q_target.parameters()):
-					target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
-				
-			# if done, print episode info
+				action = greedy_action(self.model, state)
+			# step
+			next_state, reward, done, trunc, _ = env.step(action)
+			self.memory.append(state, action, reward, next_state, done)
+			episode_cum_reward += reward
+			# train
+			for _ in range(self.nb_gradient_steps): 
+				self.gradient_step()
+			# update target network if needed
+			if self.update_target_strategy == 'replace':
+				if step % self.update_target_freq == 0: 
+					self.target_model.load_state_dict(self.model.state_dict())
+			if self.update_target_strategy == 'ema':
+				target_state_dict = self.target_model.state_dict()
+				model_state_dict = self.model.state_dict()
+				tau = self.update_target_tau
+				for key in model_state_dict:
+					target_state_dict[key] = tau*model_state_dict + (1-tau)*target_state_dict
+				target_model.load_state_dict(target_state_dict)
+			# next transition
+			step += 1
 			if done or trunc:
-				x, _ = env.reset()
-				episode_return.append(episode_cum_reward)
-				if not self.disable_episode_report:
-					print("Episode ", '{:2d}'.format(episode), 
-						  ", buffer size ", '{:4d}'.format(len(self.memory)), 
-						  ", episode return ", '{:4.1f}'.format(episode_cum_reward), 
-						  sep='')
 				episode += 1
+				# Monitoring
+				if self.monitoring_nb_trials>0:
+					MC_dr, MC_tr = self.MC_eval(env, self.monitoring_nb_trials)	# NEW NEW NEW
+					V0 = self.V_initial_state(env, self.monitoring_nb_trials)   # NEW NEW NEW
+					MC_avg_total_reward.append(MC_tr)   # NEW NEW NEW
+					MC_avg_discounted_reward.append(MC_dr)   # NEW NEW NEW
+					V_init_state.append(V0)   # NEW NEW NEW
+					episode_return.append(episode_cum_reward)   # NEW NEW NEW
+					print("Episode ", '{:2d}'.format(episode), 
+						  ", epsilon ", '{:6.2f}'.format(epsilon), 
+						  ", batch size ", '{:4d}'.format(len(self.memory)), 
+						  ", ep return ", '{:4.1f}'.format(episode_cum_reward), 
+						  ", MC tot ", '{:6.2f}'.format(MC_tr),
+						  ", MC disc ", '{:6.2f}'.format(MC_dr),
+						  ", V0 ", '{:6.2f}'.format(V0),
+						  sep='')
+				else:
+					episode_return.append(episode_cum_reward)
+					print("Episode ", '{:2d}'.format(episode), 
+						  ", epsilon ", '{:6.2f}'.format(epsilon), 
+						  ", batch size ", '{:4d}'.format(len(self.memory)), 
+						  ", ep return ", '{:4.1f}'.format(episode_cum_reward), 
+						  sep='')
+					print(evaluate_HIV(agent=agent, nb_episode=1))
+
+				
+				state, _ = env.reset()
 				episode_cum_reward = 0
 			else:
-				x=y
-		return episode_return
-
-
-
-
+				state = next_state
+		return episode_return, MC_avg_discounted_reward, MC_avg_total_reward, V_init_state
 
 
 
@@ -186,43 +202,60 @@ class ProjectAgent:
 
 
 	def act(self, observation, use_random=False):
-		scalar_dtype = next(policy.parameters()).dtype
+
 
 		if(use_random):
 			return env.action_space.sample()
 		
-		a = policy(torch.tensor(observation,dtype=scalar_dtype)).numpy()
-		res,_,_,_,_ = test_env.step(a)
-		return res
+		a = greedy_action(self.model,observation)
+
+		return a
 
 	def save(self, path):
-		torch.save(self.Qfunction.state_dict(),path + "Qfunction.pth") 
-		torch.save(self.pi.state_dict(),path + "pi.pth") 
+		torch.save(self.model.state_dict(),path + "DQN.pth") 
+
 
 
 	def load(self):
-		self.Qfunction.load_state_dict(torch.load("save_Qfunction.pth"))
-		self.pi.load_state_dict(torch.load("save_pi.pth"))
+
+		self.model.load_state_dict(torch.load("save_DQN.pth"))
 
 
+device =torch.device("cuda" if torch.cuda.is_available() else "cpu")
+state_dim = env.observation_space.shape[0]
+n_action = env.action_space.n 
+nb_neurons=240
+DQN = torch.nn.Sequential(nn.Linear(state_dim, nb_neurons),
+						  nn.ReLU(),
+						  nn.Linear(nb_neurons, nb_neurons),
+						  nn.ReLU(), 
+						  nn.Linear(nb_neurons, nb_neurons),
+						  nn.ReLU(), 
+						  nn.Linear(nb_neurons, nb_neurons),
+						  nn.ReLU(), 
+						  nn.Linear(nb_neurons, n_action)).to(device)
 
+# DQN config
+config = {'nb_actions': env.action_space.n,
+		  'learning_rate': 0.01,
+		  'gamma': 0.95,
+		  'buffer_size': 1000000,
+		  'epsilon_min': 0.01,
+		  'epsilon_max': 1.,
+		  'epsilon_decay_period': 1000,
+		  'epsilon_delay_decay': 20,
+		  'batch_size': 200,
+		  'gradient_steps': 1,
+		  'update_target_strategy': 'replace', # or 'ema'
+		  'update_target_freq': 50,
+		  'update_target_tau': 0.005,
+		  'criterion': torch.nn.SmoothL1Loss()}
 
-config = {'gamma': .99,
-		  'buffer_size': 1e6,
-		  'learning_rate': 3e-4,
-		  'batch_size': 256,
-		  'tau': 0.005,
-		  'delay_learning': 1e4,
-		  'exploration_noise': .1,
-		  'tqdm_disable': False
-		 }
-#max_episode_steps = 10000
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-Qfunction = QNetwork(env).to(device)
-policy = policyNetwork(env).to(device)
+# Train agent
 
-#agent = ProjectAgent(config, Qfunction, policy)
-#episode_returns = agent.train(env, max_episode_steps)
+agent = ProjectAgent()
+ep_length, disc_rewards, tot_rewards, V0 = agent.train(env, 200)
 
-#agent.save("save_")
+agent.save("save_")
+
 
