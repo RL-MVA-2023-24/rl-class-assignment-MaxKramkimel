@@ -261,8 +261,8 @@ config = {'nb_actions': env.action_space.n,
 
 # Train agent
 
-agent = ProjectAgent()
-ep_length, disc_rewards, tot_rewards, V0 = agent.train(env, 100)
+#agent = ProjectAgent()
+#ep_length, disc_rewards, tot_rewards, V0 = agent.train(env, 100)
 
 #agent.save("save_")
 
