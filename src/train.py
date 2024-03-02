@@ -240,6 +240,8 @@ DQN = torch.nn.Sequential(nn.Linear(state_dim, nb_neurons),
 						  nn.Linear(nb_neurons, nb_neurons),
 						  nn.ReLU(), 
 						  nn.Linear(nb_neurons, nb_neurons),
+						  nn.ReLU(),
+						  nn.Linear(nb_neurons, nb_neurons),
 						  nn.ReLU(), 
 						  nn.Linear(nb_neurons, n_action)).to(device)
 
@@ -261,8 +263,8 @@ config = {'nb_actions': env.action_space.n,
 
 # Train agent
 
-#agent = ProjectAgent()
-#ep_length, disc_rewards, tot_rewards, V0 = agent.train(env, 100)
+agent = ProjectAgent()
+ep_length, disc_rewards, tot_rewards, V0 = agent.train(env, 200)
 
 #agent.save("save_")
 
